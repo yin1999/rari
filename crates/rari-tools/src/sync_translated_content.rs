@@ -200,6 +200,18 @@ pub struct SyncTranslatedDocumentStatus {
     pub renamed: bool,
 }
 
+/// Sync a single translated document. Returns a status struct indicating what was done.
+///
+/// # Arguments
+///
+/// * `docs` - A hash map of all documents, keyed by (locale, lowercased_slug).
+/// * `redirect_maps` - A hash map of redirect maps for each locale.
+/// * `doc` - The translated document to sync.
+/// * `verbose` - Whether to print verbose output.
+///
+/// # Returns
+///
+/// A `SyncTranslatedDocumentStatus` indicating what actions were taken.
 fn sync_translated_document(
     docs: &HashMap<(Locale, Cow<'_, str>), Page>,
     redirect_maps: &HashMap<Locale, HashMap<String, String>>,
@@ -217,21 +229,28 @@ fn sync_translated_document(
 
     let resolved_slug = resolve(redirect_maps, doc.slug());
 
-    status.renamed = doc.slug() != resolved_slug;
-    status.moved = status.renamed && doc.slug().to_lowercase() != resolved_slug.to_lowercase();
-
-    if status.moved {
-        status.followed = true;
-    }
-
     let mut resolved_slug = if let Some((url, _)) = resolved_slug.split_once('#') {
         Cow::Borrowed(url)
     } else {
         resolved_slug
     };
 
-    let resolved_doc = docs.get(&(Locale::EnUs, resolved_slug.clone()));
-    status.orphaned = resolved_doc.is_none();
+    let resolved_doc = docs.get(&(Locale::EnUs, resolved_slug.to_lowercase().into()));
+    if let Some(en_doc) = resolved_doc {
+        // it means slug case changed, we also need to update the slug to match the en-US doc slug
+        if resolved_slug != en_doc.slug() {
+            resolved_slug = Cow::Borrowed(en_doc.slug());
+        }
+    } else {
+        status.orphaned = true;
+    }
+
+    status.renamed = doc.slug() != resolved_slug;
+    status.moved = status.renamed && doc.slug().to_lowercase() != resolved_slug.to_lowercase();
+
+    if status.moved {
+        status.followed = true;
+    }
 
     if !status.renamed && !status.orphaned {
         return Ok(status);

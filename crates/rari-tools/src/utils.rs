@@ -20,14 +20,16 @@ pub(crate) fn parent_slug(slug: &str) -> Result<&str, ToolError> {
     }
 }
 
-/// Read all en-US and translated documents into a hash, with a key of `(locale, slug)`.
+/// Read all en-US and translated documents into a hash, with a key of `(locale, lowercased_slug)`.
 /// This is similar to the `cached_reader` functionality, but not wrapped in a `onceLock`.
+/// The reason why we convert the slug to lowercase is to make lookups case-insensitive.
+/// So we can sync case changes in slugs for translated documents more easily.
 pub(crate) fn read_all_doc_pages() -> Result<HashMap<(Locale, Cow<'static, str>), Page>, DocError> {
     let docs = read_docs_parallel::<Page, Doc>(&[content_root()], None)?;
     let mut docs_hash: HashMap<(Locale, Cow<'_, str>), Page> = docs
         .iter()
         .cloned()
-        .map(|doc| ((doc.locale(), Cow::Owned(doc.slug().to_string())), doc))
+        .map(|doc| ((doc.locale(), Cow::Owned(doc.slug().to_lowercase())), doc))
         .collect();
 
     if let Some(translated_root) = content_translated_root() {
@@ -36,7 +38,7 @@ pub(crate) fn read_all_doc_pages() -> Result<HashMap<(Locale, Cow<'static, str>)
             translated_docs
                 .iter()
                 .cloned()
-                .map(|doc| ((doc.locale(), Cow::Owned(doc.slug().to_string())), doc)),
+                .map(|doc| ((doc.locale(), Cow::Owned(doc.slug().to_lowercase())), doc)),
         )
     }
     Ok(docs_hash)
